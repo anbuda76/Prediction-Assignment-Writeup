@@ -1,16 +1,107 @@
-# Peer-graded-Assignment-Prediction-Assignment-Writeup
-# Practical_Machine_Learning_Coursera
+---
+title: 'Peer Graded Assignment: Prediction Assignment Writeup'
+author: "Andrea Buda"
+date: "03 maggio 2019"
+output: html_document
+---
 
-Practical_Machine_Learning_Coursera
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-Repository for the Practical Machine Learning class, John Hopkins, Coursera.
+## Course Project : Practical Machine Learning
 
-The pml-coursera-project.Rmd and the pml-coursera-project.html are the R markdown and the HTML files respectively, that describe the analysis performed on the Weight Lifting Exercise Dataset, for the final project of the Practical Machine Learning class.
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
 
-For examining further the compiled HTML file, pml-coursera-project.html, for the results of the analysis, the reviewer should click the green button named "Clone or download", download files in a .zip file and open the pml-coursera-project.html file with his/her browser.
+```{r step1,include=FALSE}
 
-The pml-coursera-project.md is a markdown file, created to aid the reviewers in taking a quick look in the analysis.
+require(caret)
+require(rattle)
+require(randomForest)
 
-pml-training.csv and pml-testing.csv are the original datasets used for the analysis.
+```
 
-testing_with_predictions file contains a table with the pml-testing.csv dataset observations along with the predictions performed by the Random Forest model of the analysis, for the variable classe.
+## Exercise
+### 1. Download the original files:
+```{r step2}
+temp            <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",temp)
+trainData        <- read.csv(temp, stringsAsFactors = F)
+
+temp2           <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",temp2)
+testData         <- read.csv(temp2, stringsAsFactors = F)
+```
+
+### 2. Removing columns that contains NA values
+```{r step3}
+TrainColClean   <- which(colSums(is.na(trainData) | trainData=="")>0.9*dim(trainData)[1]) 
+trainDataC      <- trainData[,-TrainColClean]
+
+TestColClean    <- which(colSums(is.na(testData) | testData=="")>0.9*dim(testData)[1]) 
+testDataC       <- testData[,-TestColClean]
+```
+
+### 3. Partioning the training set into training and testing datasets
+```{r step4}
+set.seed(12345)
+inTrain         <- createDataPartition( y = trainDataC$classe, p = 0.75, list = F)
+training        <- trainDataC[inTrain,]
+testing         <- trainDataC[-inTrain,]
+testing$classe  <- as.factor(testing$classe)
+
+dim(training); dim(testing)
+```
+
+## Building model and cross validation
+### 1. Modelling with regression tree ("rpart")
+```{r step5}
+trControl       <- trainControl(method="cv", number=5)
+mod_tree        <- train(classe ~ ., method = "rpart", data = training[,-c(1:7)], trControl=trControl)
+
+fancyRpartPlot(mod_tree$finalModel)
+ap              <- plot(mod_tree, main = "Accuracy of Regression Tree Model") # Accuracy plot
+ap
+
+pred_tree       <- predict(mod_tree, testing)
+confusionMatrix(testing$classe, pred_tree)
+```
+
+### 2. Modelling with Stochastic Gradient Boosting ("gbm")
+```{r step6}
+mod_gbm         <- train(classe ~ . , data = training[,-c(1:7)], method="gbm", verbose=F , trControl=trControl)
+ap              <- plot(mod_gbm, main = "Accuracy of Stochastic Gradient Boosting Model") # Accuracy plot
+ap
+
+pred_gbm        <- predict(mod_gbm, testing)
+confusionMatrix(testing$classe, pred_gbm)
+```
+
+### 3. Modelling with Random Forest ("rf")
+```{r step7}
+mod_rf <- train(classe ~ . , data = training[,-c(1:7)], method = "rf", verbose = F, trControl=trControl)
+plot(mod_rf, main = "Accuracy of Random Forest model by number of predictors") # Accuracy plot
+plot(mod_rf$finalModel, main = "Model error of Random forest model by number of trees") #Error plot
+
+# Compute the variable importance 
+varImp(mod_rf)
+
+pred_rf <- predict(mod_rf, testing)
+confusionMatrix(testing$classe, pred_rf)
+```
+
+## Conclusion
+The results show that the Random Forest Model has the highest accuracy in cross validation. Therefore, we will use the random forest model for predicting test samples.
+```{r step8}
+t <-as.data.frame(cbind(rbind("Regression Tree", "Gradient Boosting", "Random Forest"),
+      rbind(round(confusionMatrix(testing$classe, pred_tree)$overall[1],3)*100,
+            round(confusionMatrix(testing$classe, pred_gbm)$overall[1],3)*100,
+            round(confusionMatrix(testing$classe, pred_rf)$overall[1],3)*100)))
+
+names(t) <- c("Model", "Accuracy")
+t
+
+predTest <- predict(mod_rf, testData)
+predTest
+```
