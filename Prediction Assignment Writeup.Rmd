@@ -103,5 +103,5 @@ names(t) <- c("Model", "Accuracy")
 t
 
 predTest <- predict(mod_rf, testData)
-predTest
+as.data.frame(predTest)
 ```
